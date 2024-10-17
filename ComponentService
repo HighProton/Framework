@@ -1,0 +1,192 @@
+--[[
+	--[ComponentService]--
+	Boot:
+		ComponentService.AddComponents(PATH_TO_COMPONENTS)
+		ComponentService.Start()
+	
+	Example:
+		local Transparent = {
+			Tag = "Transparent"
+		}
+		Transparent.__index = Transparent
+
+		function Transparent.new(ComponentInstance: Instance)
+			local self = {}
+			setmetatable(self, Transparent)
+			
+			self.Instance = ComponentInstance
+			
+			self:Init()
+			
+			return self
+		end
+
+		function Transparent:Init()
+			self.Instance.Transparency = 1
+		end
+
+		function Transparent:Destroy()
+			self.Instance.Transparency = 0
+		end
+
+		return Transparent
+		
+	Functions:
+		ComponentService.AddComponents(Components: Instance) -- Adds The Children Of The "Components" To The Cache. You can't add more components after starting!
+		ComponentService.AddComponentsDeep(Components: Instance) -- Adds The Descendnants Of The "Components" To The Cache. You can't add more components after starting!
+		ComponentService.Start() -- Adds All Of The Instances To The Signal
+]]
+
+--// Services
+local CollectionService = game:GetService("CollectionService")
+
+--// Private Variables
+local ComponentsCache: {
+	[string]: ModuleScript
+} = {}
+
+local InstanceCache: {
+	[Instance]: {
+		[string]: (...any?) -> (...any?)
+	}
+} = {}
+
+local Started = false
+
+--// Constants
+local ComponentService = {}
+
+--// Private Functions
+local function GetComponent(Tag: string): ...any
+	local ComponentModule = ComponentsCache[Tag]
+	if not ComponentModule then
+		warn(`Component tag[{Tag}] is not found`)
+		return
+	end
+	local Component = require(ComponentModule)
+	return Component
+end
+
+local function GetTag(ComponentModule: ModuleScript): string
+	return require(ComponentModule).Tag
+end
+
+--// Global Functions
+function ComponentService.AddComponents(Components: Instance)
+	if Started then
+		warn(`ComponentService has started!`)
+		return
+	end
+	
+	assert(typeof(Components) == "Instance", `Components must be an Instance; got {typeof(Components)}`)
+	
+	for _, Component in ipairs(Components:GetChildren()) do
+		if not Component:IsA("ModuleScript") then
+			return
+		end
+		
+		local Tag = GetTag(Component) or Component.Name
+		
+		if ComponentsCache[Tag] then
+			warn(`{Tag} is already added!`)
+			continue
+		end
+		
+		ComponentsCache[Tag] = Component
+	end
+end
+
+function ComponentService.AddComponentsDeep(Components: Instance)
+	if Started then
+		warn(`ComponentService has started!`)
+		return
+	end
+	
+	assert(typeof(Components) == "Instance", `Components must be an Instance; got {typeof(Components)}`)
+
+	for _, Component in ipairs(Components:GetDescendents()) do
+		if not Component:IsA("ModuleScript") then
+			return
+		end
+
+		local Tag = GetTag(Component) or Component.Name
+
+		if ComponentsCache[Tag] then
+			warn(`{Tag} is already added!`)
+			continue
+		end
+
+		ComponentsCache[Tag] = Component
+	end
+end
+
+function ComponentService.AddComponentInstance(AddedInstance: Instance, Tag: string)
+	assert(typeof(AddedInstance) == "Instance", `AddedInstance must be an Instance; got {typeof(AddedInstance)}`)
+	assert(type(Tag) == "string", `Tag must be a string; got {typeof(Tag)}`)
+	
+	local Component = GetComponent(Tag)
+	
+	if not Component.new or Component.New then
+		return
+	end
+	
+	local NewComponent
+	if Component.new then
+		NewComponent = Component.new(AddedInstance)
+	elseif Component.New then
+		NewComponent = Component.New(AddedInstance)
+	end
+	
+	InstanceCache[AddedInstance] = InstanceCache[AddedInstance] or {}
+	InstanceCache[AddedInstance][Tag] = NewComponent
+end
+
+function ComponentService.RemoveComponentInstance(RemovedInstance: Instance, Tag: string)
+	assert(typeof(RemovedInstance) == "Instance", `AddedInstance must be an Instance; got {typeof(RemovedInstance)}`)
+	assert(type(Tag) == "string", `Tag must be a string; got {typeof(Tag)}`)
+	
+	local Component = GetComponent(Tag)
+	local CachedComponent = InstanceCache[RemovedInstance][Tag]
+	if CachedComponent.Destroy then
+		CachedComponent:Destroy()
+	end
+	
+	if InstanceCache[RemovedInstance] == {} then
+		InstanceCache[RemovedInstance] = nil
+	end
+end
+
+function ComponentService.Preload()
+	for _, ComponentModule in pairs(ComponentsCache) do
+		local Tag = GetTag(ComponentModule) or ComponentModule.Name
+		for _, ComponentInstance in ipairs(CollectionService:GetTagged(Tag)) do
+			ComponentService.AddComponentInstance(ComponentInstance, Tag)
+		end
+	end
+end
+
+function ComponentService.InstanceSignal()
+	for _, ComponentModule in pairs(ComponentsCache) do
+		local Tag = GetTag(ComponentModule) or ComponentModule.Name
+		CollectionService:GetInstanceAddedSignal(Tag):Connect(function(ComponentInstance)
+			ComponentService.AddComponentInstance(ComponentInstance, Tag)
+		end)
+		CollectionService:GetInstanceRemovedSignal(Tag):Connect(function(ComponentInstance)
+			ComponentService.RemoveComponentInstance(ComponentInstance, Tag)
+		end)
+	end
+end
+
+function ComponentService.Start()
+	if Started then
+		warn(`ComponentService has started!`)
+		return
+	end
+	
+	Started = true
+	
+	ComponentService.Preload()
+	ComponentService.InstanceSignal()
+end
+
+return ComponentService
