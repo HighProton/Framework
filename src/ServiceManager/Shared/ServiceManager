@@ -10,7 +10,7 @@
 		ServiceManager.AddServicesDeep(Object: Instance) -- Adds Services Along With Descendants
 		ServiceManager.CreateService(ServiceName: string) -- Creates Service
 		ServiceManager.GetService(ServiceName: string) -- Gets Service
-		ServiceManager.Start() -- Starts also automatically calls "Init" and "Start" methods, with all "Init" having to be finished before calling "Start" synchronously.
+		ServiceManager.Start() -- Calls an "Init" method on all services that have it synchronously, after completion of initialization on all modules ServiceManager will call the "Start" method synchronously.
 ]]
 
 --// Requires
