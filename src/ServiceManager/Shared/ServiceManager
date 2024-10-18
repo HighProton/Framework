@@ -1,0 +1,106 @@
+--[[
+	--[ServiceManager]--
+	Boot:
+		ServerManager.AddServices(PATH_TO_SERVICES)
+		ServerManager.Start():andThen(function()
+			warn(`[Server] ServerManager Started`)
+		end):catch(warn)
+	Functions:
+		ServiceManager.AddServices(Object: Instance) -- Adds Services
+		ServiceManager.AddServicesDeep(Object: Instance) -- Adds Services Along With Descendants
+		ServiceManager.CreateService(ServiceName: string) -- Creates Service
+		ServiceManager.GetService(ServiceName: string) -- Gets Service
+		ServiceManager.Start() -- Starts also automatically calls "Init" and "Start" methods, with all "Init" having to be finished before calling "Start" synchronously.
+]]
+
+--// Requires
+local Promise = require(script.Parent.Packages.Promise)
+
+--// Constants
+local ServiceManager = {}
+ServiceManager.__index = ServiceManager
+
+--// Variables
+local Services = {}
+
+local Started = false
+
+--// Local Functions
+local function ServiceExists(ServiceName: string): boolean
+	if Services[ServiceName] then
+		return true
+	else
+		return false
+	end
+end
+
+--// Global Functions
+function ServiceManager.AddServices(Object: Instance)
+	assert(not Started, `Can't add more Services already started!`)
+	assert(typeof(Object) == "Instance", `Object must be an Instance; got {typeof(Object)}`)
+	
+	for _, Service in ipairs(Object:GetChildren()) do
+		if not Service:IsA("ModuleScript") then
+			continue
+		end
+		require(Service)
+	end
+end
+
+function ServiceManager.AddServicesDeep(Object: Instance)
+	assert(not Started, `Can't add more Services already started!`)
+	assert(typeof(Object) == "Instance", `Object must be an Instance; got {typeof(Object)}`)
+
+	for _, Service in ipairs(Object:GetDescendants()) do
+		if not Service:IsA("ModuleScript") then
+			continue
+		end
+		require(Service)
+	end
+end
+
+function ServiceManager.CreateService(ServiceName: string)
+	assert(type(ServiceName) == "string", `ServiceName must be a string; got {typeof(ServiceName)}`)
+	assert(not ServiceExists(ServiceName), `Service already exists!`)
+	
+	local ServiceTable = {}
+	
+	Services[ServiceName] = ServiceTable
+	
+	return ServiceTable
+end
+
+function ServiceManager.GetService(ServiceName: string)
+	assert(type(ServiceName) == "string", `ServiceName must be a string; got {typeof(ServiceName)}`)
+	assert(ServiceExists(ServiceName), `Service doesn't exist!`)
+	
+	return Services[ServiceName]
+end
+
+function ServiceManager.Start()
+	assert(not Started, `Can't call start function!`)
+	Started = true
+	return Promise.new(function(resolve)
+		local PromiseInitMethods = {}
+		for _, Service in pairs(Services) do
+			if Service.Init and type(Service.Init) == "function" then
+				table.insert(PromiseInitMethods, Promise.new(function(resolve)
+					Service.Init(Service)
+					resolve()
+				end))
+			end
+		end
+		
+		resolve(Promise.all(PromiseInitMethods))
+	end):andThen(function()
+		for _, Service in pairs(Services) do
+			if Service.Start and type(Service.Start) == "function" then
+				Promise.new(function()
+					task.spawn(Service.Start, Service)
+				end)
+			end
+		end
+	end)
+end
+
+return ServiceManager
