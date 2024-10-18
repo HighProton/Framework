@@ -1,1 +1,1 @@
-Used to help manager and create threads, with extra utilities stored inside.
+Used to help manage and create threads, with extra utilities stored inside.
