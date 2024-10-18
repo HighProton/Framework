@@ -1,0 +1,52 @@
+--[[
+	--[ThreadUtil]--
+	Functions:
+		ThreadUtil.Create(Function: (...any) -> (...any)): typeof(setmetatable({}, ThreadUtil)) -- Creates a and returns a new thread
+		
+	Methods:
+		ThreadUtil:Resume(...: any?) -- Resumes the thread
+		ThreadUtil:Close() -- Closes the thread
+		ThreadUtil:Yield() -- Yields the thread
+		ThreadUtil:GetStatus(): typeof(coroutine.status) -- Returns the current threads status
+		ThreadUtil:Clone(): typeof(setmetatable({}, ThreadUtil)) -- Returns a cloned thread starting at the beginning
+]]
+
+--// Variables
+local ThreadUtil = {}
+ThreadUtil.__index = ThreadUtil
+
+--// Global Functions
+function ThreadUtil.Create(Function: (...any) -> (...any)): typeof(setmetatable({}, ThreadUtil))
+	assert(type(Function) == "function", `Function must be a function; got {typeof(Function)}`)
+	
+	local self = {}
+	setmetatable(self, ThreadUtil)
+	
+	self._function = Function
+	self._thread = coroutine.create(Function)
+	
+	return self
+end
+
+--// Global Methods
+function ThreadUtil:Resume(...: any?)
+	coroutine.resume(self._thread, ...)
+end
+
+function ThreadUtil:Close()
+	coroutine.close(self._thread)
+end
+
+function ThreadUtil:Yield()
+	coroutine.yield(self._thread)
+end
+
+function ThreadUtil:GetStatus(): typeof(coroutine.status)
+	return coroutine.status(self._thread)
+end
+
+function ThreadUtil:Clone(): typeof(setmetatable({}, ThreadUtil))
+	return ThreadUtil.new(self._function)
+end
+
+return ThreadUtil
